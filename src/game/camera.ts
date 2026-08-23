@@ -17,8 +17,9 @@ export function clampZoom(z: number, view: ViewSize = { width: 0, height: 0 }): 
   if (view.width > 0) min = Math.max(min, view.width / (MAX_VIS_COLS * CELL))
   if (view.height > 0) min = Math.max(min, view.height / (MAX_VIS_ROWS * CELL))
   min = Math.min(min, ZOOM_MAX)
-  if (!Number.isFinite(z)) return Math.max(min, 0.85)
-  return Math.min(ZOOM_MAX, Math.max(min, Math.round(z * 100) / 100))
+  const raw = Number.isFinite(z) ? z : Math.max(min, 0.85)
+  const next = Math.min(ZOOM_MAX, Math.max(min, raw))
+  return Math.round(next * 100) / 100
 }
 
 export function visibleCellRange(
