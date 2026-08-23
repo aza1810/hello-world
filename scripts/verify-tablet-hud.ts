@@ -18,7 +18,7 @@ const resName = css.slice(css.indexOf('.game-res-name {'), css.indexOf('.game-re
 assert(/display:\s*none/.test(resName), 'HUD resource names stay hidden until tap')
 
 assert(/namedMat/.test(floor), 'tapping a material stores the named item')
-assert(/setNamedMat\(id\)/.test(floor), 'material chips call setNamedMat on tap')
+assert(/setNamedMat\(\(cur\) =>/.test(floor), 'material chips toggle the named item on tap')
 assert(/<button[\s\S]*className=\{`game-res/.test(floor), 'material chips are buttons')
 assert(
   /\{namedMat \? ITEM_META\[namedMat\]\.label : 'Mats'\}/.test(floor),

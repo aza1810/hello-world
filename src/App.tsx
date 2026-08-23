@@ -281,7 +281,7 @@ function Shell() {
     true,
     onSectionSwipe,
     // Map pan, build rail, overlays, and the dock keep their own gestures.
-    '.factory-viewport, .build-rail, .inspect-modal, .bottom-nav, .tutorial-root, .toast, .away-root, .minimap, .viewport-fabs',
+    '.factory-viewport, .build-rail, .inspect-modal, .bottom-nav, .tutorial-root, .toast, .away-root, .minimap, .viewport-fabs, .game-hud',
   )
 
   const sheetLabel =

@@ -5954,6 +5954,13 @@ html[data-theme='light'] .machine-progress-track {
   padding-right: 0.12rem;
 }
 
+.game-hud-wh-label.is-named {
+  color: #f0e0a0;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 0.68rem;
+}
+
 @keyframes ore-hint-pulse {
   0%,
   100% {

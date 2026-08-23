@@ -501,12 +501,6 @@ export function FactoryFloor({
     return () => window.clearTimeout(t)
   }, [state.entities])
 
-  useEffect(() => {
-    if (!namedMat) return
-    const t = window.setTimeout(() => setNamedMat(null), 1800)
-    return () => window.clearTimeout(t)
-  }, [namedMat])
-
   useLayoutEffect(() => {
     const el = hudRef.current
     const floor = el?.parentElement
@@ -1218,7 +1212,7 @@ export function FactoryFloor({
 
         <div className="game-hud-resources" aria-label="Materials">
           <span
-            className="game-hud-wh-label"
+            className={`game-hud-wh-label${namedMat ? ' is-named' : ''}`}
             title="Pack holds one stack of each material. Chests hold extra. Tap an icon for the name."
           >
             {namedMat ? ITEM_META[namedMat].label : 'Mats'}
@@ -1236,7 +1230,9 @@ export function FactoryFloor({
                 style={{ '--res': ITEM_META[id].color } as CSSProperties}
                 title={`${label}: pack holds up to 100, chests hold more`}
                 aria-label={`${label} ${formatNum(n)}`}
-                onClick={() => setNamedMat(id)}
+                aria-pressed={namedMat === id}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setNamedMat((cur) => (cur === id ? null : id))}
               >
                 <ItemSprite item={id} />
                 <span className="game-res-name">{label}</span>
