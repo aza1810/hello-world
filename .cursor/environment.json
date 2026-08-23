@@ -1,0 +1,11 @@
+{
+  "name": "Task Foundry",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "vite-dev",
+      "command": "npm run dev"
+    }
+  ],
+  "ports": [{ "name": "vite dev server", "port": 5173 }]
+}
