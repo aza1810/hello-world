@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -346,6 +347,8 @@ export function FactoryFloor({
   // Default: one-finger drag pans. Opt in to paint lines by dragging.
   const [dragBuild, setDragBuild] = useState(false)
   const [resPulse, setResPulse] = useState<Partial<Record<ItemId, boolean>>>({})
+  const [namedMat, setNamedMat] = useState<ItemId | null>(null)
+  const hudRef = useRef<HTMLDivElement>(null)
   const prevChestStock = useRef(sumChestStores(state))
 
   const openInspect = useCallback((cell: { x: number; y: number }) => {
@@ -497,6 +500,25 @@ export function FactoryFloor({
     }, 420)
     return () => window.clearTimeout(t)
   }, [state.entities])
+
+  useEffect(() => {
+    if (!namedMat) return
+    const t = window.setTimeout(() => setNamedMat(null), 1800)
+    return () => window.clearTimeout(t)
+  }, [namedMat])
+
+  useLayoutEffect(() => {
+    const el = hudRef.current
+    const floor = el?.parentElement
+    if (!el || !floor) return
+    const sync = () => {
+      floor.style.setProperty('--hud-clearance', `${el.offsetHeight}px`)
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [goal, namedMat, activeCraftRecipe])
 
   useEffect(() => {
     const oreDelta = state.stats.oreMined - prevOre.current
@@ -1159,7 +1181,7 @@ export function FactoryFloor({
 
   return (
     <section className="factory-floor is-playable">
-      <div className="game-hud">
+      <div className="game-hud" ref={hudRef}>
         <div className="game-hud-top">
           <div className="game-hud-identity">
             <div className="game-hud-title-row">
@@ -1197,23 +1219,29 @@ export function FactoryFloor({
         <div className="game-hud-resources" aria-label="Materials">
           <span
             className="game-hud-wh-label"
-            title="Pack holds one stack of each material. Chests hold extra."
+            title="Pack holds one stack of each material. Chests hold extra. Tap an icon for the name."
           >
-            Materials
+            {namedMat ? ITEM_META[namedMat].label : 'Mats'}
           </span>
           {HUD_RESOURCES.map((id) => {
             const n = warehouseHudAmount(state, id)
+            const label = ITEM_META[id].label
             return (
-              <span
+              <button
                 key={id}
-                className={`game-res${resPulse[id] ? ' is-pulse' : ''}${n <= 0 ? ' is-zero' : ''}`}
+                type="button"
+                className={`game-res${resPulse[id] ? ' is-pulse' : ''}${n <= 0 ? ' is-zero' : ''}${
+                  namedMat === id ? ' is-named' : ''
+                }`}
                 style={{ '--res': ITEM_META[id].color } as CSSProperties}
-                title={`${ITEM_META[id].label}: pack holds up to 100, chests hold more`}
+                title={`${label}: pack holds up to 100, chests hold more`}
+                aria-label={`${label} ${formatNum(n)}`}
+                onClick={() => setNamedMat(id)}
               >
                 <ItemSprite item={id} />
-                <span className="game-res-name">{ITEM_META[id].label}</span>
+                <span className="game-res-name">{label}</span>
                 <em className="game-res-count">{formatNum(n)}</em>
-              </span>
+              </button>
             )
           })}
         </div>
