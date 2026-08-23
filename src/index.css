@@ -5945,13 +5945,18 @@ html[data-theme='light'] .machine-progress-track {
 .game-hud-wh-label {
   flex: 0 0 auto;
   align-self: center;
+  min-width: 4.8rem;
+  max-width: 6.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #a89878;
-  padding-right: 0.12rem;
+  padding-right: 0.28rem;
 }
 
 .game-hud-wh-label.is-named {
