@@ -82,15 +82,12 @@ import {
   ToolIcon,
 } from '../sprites/Sprites'
 import { CELL, FloorCell, StoreTags, storeHasItems } from './FactoryFloorCell'
+import { clampZoom, visibleCellRange } from '../game/camera'
 import { useProductionRates } from '../hooks/useProductionRates'
 import { MachineInventory, hasMachineInventory } from './MachineInventory'
 import { resolveTheme, subscribeTheme } from '../theme'
 import type { Entity, GameState, ItemId, Placeable, ToolId } from '../game/types'
 
-const ZOOM_MIN = 0.45
-const ZOOM_MAX = 2.2
-/** Extra tiles rendered past the viewport so trees and 3x3 buildings do not pop. */
-const CULL_PAD = 2
 /** Touch browsers often report movementX/Y as 0 - use client deltas instead. */
 const PAN_SLOP = 10
 
@@ -130,22 +127,6 @@ function clampPan(
   return { x, y }
 }
 
-function visibleCellRange(
-  pan: { x: number; y: number },
-  zoom: number,
-  viewport: { width: number; height: number },
-  mapW: number,
-  mapH: number,
-): { x0: number; y0: number; x1: number; y1: number } {
-  const cell = CELL * zoom
-  const vw = viewport.width > 0 ? viewport.width : 1024
-  const vh = viewport.height > 0 ? viewport.height : 768
-  const x0 = Math.max(0, Math.floor(-pan.x / cell) - CULL_PAD)
-  const y0 = Math.max(0, Math.floor(-pan.y / cell) - CULL_PAD)
-  const x1 = Math.min(mapW - 1, Math.ceil((vw - pan.x) / cell) + CULL_PAD)
-  const y1 = Math.min(mapH - 1, Math.ceil((vh - pan.y) / cell) + CULL_PAD)
-  return { x0, y0, x1: Math.max(x0, x1), y1: Math.max(y0, y1) }
-}
 const HUD_RESOURCES: ItemId[] = [
   'ironOre',
   'copperOre',
@@ -405,6 +386,10 @@ export function FactoryFloor({
   const prevOre = useRef(state.stats.oreMined)
   const prevCycles = useRef(state.mineCycles)
   const holdTimer = useRef(0)
+  const pinchRaf = useRef(0)
+  const pinchPending = useRef<{ zoom: number; pan: { x: number; y: number } } | null>(
+    null,
+  )
   const gesture = useRef<{
     kind: 'none' | 'pending' | 'pan' | 'paint' | 'pinch'
     startZoom: number
@@ -566,26 +551,42 @@ export function FactoryFloor({
     return clampPan(p, cam.zoom, viewportSize.current, cam.width, cam.height)
   }, [])
 
-  // Keep pan bounds in sync with viewport size and zoom
+  // Keep pan bounds in sync with viewport size. Do not rebind on zoom:
+  // pinch already clamps, and a new observer each frame can hitch.
   useEffect(() => {
     const el = viewportRef.current
     if (!el) return
     const sync = () => {
       const rect = el.getBoundingClientRect()
-      viewportSize.current = { width: rect.width, height: rect.height }
-      setViewSize({ width: rect.width, height: rect.height })
+      const next = { width: rect.width, height: rect.height }
+      viewportSize.current = next
+      setViewSize((prev) =>
+        Math.abs(prev.width - next.width) < 0.5 && Math.abs(prev.height - next.height) < 0.5
+          ? prev
+          : next,
+      )
       setPan((p) => clampCamera(p))
+      setZoom((z) => {
+        const clamped = clampZoom(z, next)
+        if (clamped !== z) cameraRef.current = { ...cameraRef.current, zoom: clamped }
+        return clamped
+      })
     }
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [clampCamera, zoom, width, height])
+  }, [clampCamera, width, height])
+
+  useEffect(() => {
+    setPan((p) => clampCamera(p))
+  }, [clampCamera, zoom])
 
   // Clear timers on unmount
   useEffect(() => {
     return () => {
       if (holdTimer.current) window.clearTimeout(holdTimer.current)
+      if (pinchRaf.current) window.cancelAnimationFrame(pinchRaf.current)
     }
   }, [])
 
@@ -621,15 +622,19 @@ export function FactoryFloor({
 
   const cellFromPoint = useCallback(
     (clientX: number, clientY: number) => {
-      const world = worldRef.current
-      if (!world) return null
-      const rect = world.getBoundingClientRect()
-      const x = Math.floor((clientX - rect.left) / (CELL * zoom))
-      const y = Math.floor((clientY - rect.top) / (CELL * zoom))
+      const vp = viewportRef.current
+      if (!vp) return null
+      const rect = vp.getBoundingClientRect()
+      const z = cameraRef.current.zoom
+      const cell = CELL * z
+      if (!(cell > 0)) return null
+      const p = panRef.current
+      const x = Math.floor((clientX - rect.left - p.x) / cell)
+      const y = Math.floor((clientY - rect.top - p.y) / cell)
       if (x < 0 || y < 0 || x >= width || y >= height) return null
       return { x, y }
     },
-    [zoom, width, height],
+    [width, height],
   )
 
   const paintCell = useCallback(
@@ -790,9 +795,16 @@ export function FactoryFloor({
   /** Zoom around a viewport-local focal point, adjusting pan so that point stays put. */
   const zoomAt = useCallback(
     (nextZoom: number, focal: { x: number; y: number }) => {
+      const view = viewportSize.current
+      const z1 = clampZoom(nextZoom, view)
       const z0 = cameraRef.current.zoom
-      const z1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(nextZoom * 100) / 100))
-      if (z1 === z0) return
+      if (!(z0 > 0.05) || z1 === z0) {
+        if (z1 !== z0) {
+          cameraRef.current = { ...cameraRef.current, zoom: z1 }
+          setZoom(z1)
+        }
+        return
+      }
       cameraRef.current = { ...cameraRef.current, zoom: z1 }
       setPan((p) =>
         clampCamera({
@@ -889,27 +901,33 @@ export function FactoryFloor({
 
       const pts = [...pointers.current.values()]
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
-      const nextZoom = Math.min(
-        ZOOM_MAX,
-        Math.max(ZOOM_MIN, gesture.current.startZoom * (dist / gesture.current.startDist)),
+      const z0 = gesture.current.startZoom > 0.05 ? gesture.current.startZoom : cameraRef.current.zoom
+      const z1 = clampZoom(
+        z0 * (dist / Math.max(1, gesture.current.startDist)),
+        viewportSize.current,
       )
-      const z1 = Math.round(nextZoom * 100) / 100
-      const z0 = gesture.current.startZoom
       const rect = vp.getBoundingClientRect()
-      // Keep the world point under the moving pinch midpoint stable.
       const mid = {
         x: (pts[0].x + pts[1].x) / 2 - rect.left,
         y: (pts[0].y + pts[1].y) / 2 - rect.top,
       }
-      const ratio = z1 / z0
+      const ratio = z0 > 0.05 ? z1 / z0 : 1
+      const nextPan = clampCamera({
+        x: mid.x - (startMid.x - startPan.x) * ratio,
+        y: mid.y - (startMid.y - startPan.y) * ratio,
+      })
       cameraRef.current = { ...cameraRef.current, zoom: z1 }
-      setZoom(z1)
-      setPan(
-        clampCamera({
-          x: mid.x - (startMid.x - startPan.x) * ratio,
-          y: mid.y - (startMid.y - startPan.y) * ratio,
-        }),
-      )
+      panRef.current = nextPan
+      pinchPending.current = { zoom: z1, pan: nextPan }
+      if (!pinchRaf.current) {
+        pinchRaf.current = window.requestAnimationFrame(() => {
+          pinchRaf.current = 0
+          const pending = pinchPending.current
+          if (!pending) return
+          setZoom(pending.zoom)
+          setPan(pending.pan)
+        })
+      }
       gesture.current.moved = true
       return
     }
@@ -963,6 +981,16 @@ export function FactoryFloor({
     pointers.current.delete(e.pointerId)
 
     if (pointers.current.size < 2 && kind === 'pinch') {
+      const pending = pinchPending.current
+      if (pending) {
+        setZoom(pending.zoom)
+        setPan(pending.pan)
+        pinchPending.current = null
+      }
+      if (pinchRaf.current) {
+        window.cancelAnimationFrame(pinchRaf.current)
+        pinchRaf.current = 0
+      }
       gesture.current.kind = 'none'
       gesture.current.startPan = null
       gesture.current.startMid = null
@@ -1353,8 +1381,6 @@ export function FactoryFloor({
           ref={worldRef}
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            width: width * CELL,
-            height: height * CELL,
           }}
         >
           {active && (
@@ -1362,8 +1388,11 @@ export function FactoryFloor({
           <div
             className="factory-grid"
             style={{
-              width: width * CELL,
-              height: height * CELL,
+              left: vis.x0 * CELL,
+              top: vis.y0 * CELL,
+              width: (vis.x1 - vis.x0 + 1) * CELL,
+              height: (vis.y1 - vis.y0 + 1) * CELL,
+              backgroundPosition: `${-vis.x0 * CELL}px ${-vis.y0 * CELL}px`,
             }}
           >
             {Array.from({ length: vis.y1 - vis.y0 + 1 }, (_, iy) => {
@@ -1420,6 +1449,8 @@ export function FactoryFloor({
                     ghostFlip={placeFlip}
                     planGhost={ghostAt.get(key) ?? null}
                     bpGhost={bpGhostAt.get(key) ?? null}
+                    originX={vis.x0}
+                    originY={vis.y0}
                   />
                 )
               })

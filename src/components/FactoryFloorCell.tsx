@@ -1,4 +1,5 @@
 import { memo, type CSSProperties } from 'react'
+import { CELL } from '../game/camera'
 import {
   ITEM_META,
   OPPOSITE,
@@ -30,7 +31,7 @@ import type {
   ToolId,
 } from '../game/types'
 
-export const CELL = 56
+export { CELL }
 
 function InserterDirOverlay({ dir }: { dir: Dir }) {
   return (
@@ -150,6 +151,8 @@ export type FloorCellProps = {
   ghostFlip: boolean
   planGhost: PlanGhost | null
   bpGhost: BpGhost | null
+  originX: number
+  originY: number
 }
 
 function sameCell(a: FloorCellProps, b: FloorCellProps): boolean {
@@ -177,7 +180,9 @@ function sameCell(a: FloorCellProps, b: FloorCellProps): boolean {
     a.ghostDir === b.ghostDir &&
     a.ghostFlip === b.ghostFlip &&
     a.planGhost === b.planGhost &&
-    a.bpGhost === b.bpGhost
+    a.bpGhost === b.bpGhost &&
+    a.originX === b.originX &&
+    a.originY === b.originY
   )
 }
 
@@ -209,6 +214,8 @@ function FloorCellInner({
   ghostFlip,
   planGhost,
   bpGhost,
+  originX,
+  originY,
 }: FloorCellProps) {
   const entSize = ent ? sizeOf(ent.kind) : { w: 1, h: 1 }
   const isAnchor = !ent || (ent.x === x && ent.y === y)
@@ -284,8 +291,8 @@ function FloorCellInner({
         .filter(Boolean)
         .join(' ')}
       style={{
-        left: x * CELL,
-        top: y * CELL,
+        left: (x - originX) * CELL,
+        top: (y - originY) * CELL,
         width: CELL,
         height: CELL,
       }}

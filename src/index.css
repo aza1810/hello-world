@@ -3839,14 +3839,16 @@ html[data-theme='light'] .ghost-btn.is-danger {
 
 .factory-world {
   position: relative;
+  width: 0;
+  height: 0;
+  overflow: visible;
   transform-origin: 0 0;
-  will-change: transform;
   z-index: 1;
 }
 
 .factory-floor .factory-grid {
   display: block;
-  position: relative;
+  position: absolute;
   background-color: var(--ground-grid);
   background-image:
     linear-gradient(to right, rgba(0, 0, 0, 0.22) 1px, transparent 1px),
